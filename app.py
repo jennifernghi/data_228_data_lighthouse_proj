@@ -7,6 +7,13 @@ from google.oauth2 import id_token
 from google_auth_oauthlib.flow import Flow
 from pip._vendor import cachecontrol
 import google.auth.transport.requests
+from urllib.request import urlopen
+import json
+import plotly
+import plotly.express as px
+import plotly.graph_objects as go
+import pandas as pd
+
 app = Flask(__name__)
 
 app.secret_key = "a1239!sjhiiuwodji"  #it is necessary to set a password when dealing with OAuth 2.0
@@ -66,8 +73,8 @@ def callback():
 
     session["google_id"] = id_info.get("sub")  #defing the results to show on the page
     session["name"] = id_info.get("name")
-
-    print(session["name"])
+    session["picture"] = id_info.get("picture")
+  
     return redirect("/protected_area")  #the final page where the authorized users will end up
 
 
@@ -85,7 +92,25 @@ def logout():
 @app.route("/protected_area")  #the page where only the authorized users can go to
 @login_is_required
 def protected_area():
-    return f"Hello {session['name']}! <br/> <a href='/logout'><button>Logout</button></a>"  #the logout button 
+    return render_template('dashboard.html', session=session, fire_prediction = yield_choloplete_map())
+    # return f"Hello {session['name']}! <br/> <a href='/logout'><button>Logout</button></a>"  #the logout button 
+
+
+
+def yield_choloplete_map():
+    with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json') as response:
+        counties = json.load(response)
+    df = pd.read_csv("https://raw.githubusercontent.com/plotly/datasets/master/fips-unemp-16.csv", dtype={"fips": str})
+    fig = px.choropleth(df, geojson=counties, locations='fips', color='unemp',
+                           color_continuous_scale="Viridis",
+                           range_color=(0, 12),
+                           scope="usa",
+                           labels={'unemp':'unemployment rate'}
+                          )
+    fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+    return graphJSON
 
 if __name__ == "__main__":
     app.run(debug=True)
