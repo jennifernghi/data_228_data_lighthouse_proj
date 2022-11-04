@@ -10,9 +10,9 @@ import google.auth.transport.requests
 app = Flask(__name__)
 
 app.secret_key = "a1239!sjhiiuwodji"  #it is necessary to set a password when dealing with OAuth 2.0
-# @app.route("/")
-# def home():
-#     return render_template("index.html")
+@app.route("/")
+def home():
+    return render_template("index.html")
 
 
  
@@ -77,9 +77,9 @@ def logout():
     return redirect("/")
 
 
-@app.route("/")  #the home page where the login button will be located
-def index():
-    return "Hello World <a href='/login'><button>Login</button></a>"
+# @app.route("/")  #the home page where the login button will be located
+# def index():
+#     return "Hello World <a href='/login'><button>Login</button></a>"
 
 
 @app.route("/protected_area")  #the page where only the authorized users can go to
