@@ -13,10 +13,22 @@ import plotly
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
+from datetime import date, datetime  
+import numpy as np 
+from keras.models import  load_model 
+from sklearn.preprocessing import StandardScaler 
 
+ 
+
+            
 app = Flask(__name__)
 
 app.secret_key = "a1239!sjhiiuwodji"  #it is necessary to set a password when dealing with OAuth 2.0
+
+with urlopen('https://raw.githubusercontent.com/plotly/datasets/master/geojson-counties-fips.json') as response:
+      counties = json.load(response)
+
+
 @app.route("/")
 def home():
     return render_template("index.html")
@@ -92,7 +104,7 @@ def logout():
 @app.route("/protected_area")  #the page where only the authorized users can go to
 @login_is_required
 def protected_area():
-    return render_template('dashboard.html', session=session, fire_prediction = yield_choloplete_map())
+    return render_template('dashboard.html', session=session,  )
     # return f"Hello {session['name']}! <br/> <a href='/logout'><button>Logout</button></a>"  #the logout button 
 
 
@@ -105,12 +117,133 @@ def yield_choloplete_map():
                            color_continuous_scale="Viridis",
                            range_color=(0, 12),
                            scope="usa",
-                           labels={'unemp':'unemployment rate'}
+                           labels={'unemp':'p'}
                           )
     fig.update_layout(margin={"r":0,"t":0,"l":0,"b":0})
     graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
 
     return graphJSON
+
+
+@app.route('/analyze_callback', methods=['POST', 'GET'])
+def cb(): 
+
+    lst = [
+    get_doy(request.args.get('date_select')), get_time(request.args.get('time_select')),
+    request.args.get('cause_dd'), request.args.get('CAUSE_AGE_CATEGORY'), request.args.get('general_cause'), 
+    request.args.get('burning_index'), request.args.get('min_air_temperature_K_avg'),  request.args.get('max_air_temperature_K_avg'),
+    request.args.get('max_relative_humidity_avg'), request.args.get('min_relative_humidity_avg'),  request.args.get('precipitation_amount_avg'),
+    request.args.get('specific_humidity'), request.args.get('surface_downwelling_shortwave_flux_avg'),  request.args.get('wind_speed_avg'),]
+
+    
+    
+    fips_mapping = pd.read_csv('saved_model/fips_reference.csv') 
+    fips_mapping = fips_mapping.loc[:, ~fips_mapping.columns.str.contains('^Unnamed')]
+
+ 
+    model = load_model("saved_model/DNN_v5.h5")
+    scaler=StandardScaler()
+    
+    x = scaler.fit_transform(np.array(lst,  dtype=np.float).reshape((1, 14))) ## data inputs here
+    pred = model.predict(x)[0]
+
+    df = fips_mapping[['items']].rename(columns={"items": "FIPS" })
+    df['state_code'] = 6
+    df['FIPS'] = df.FIPS.astype(int)
+    df['FIPS'] = df.FIPS.astype(str)
+    df['FIPS'] = df.FIPS.str.zfill(5)
+    
+    df['p'] =pred 
+    county_df = pd.read_csv("saved_model/county_codes.csv")
+    
+    county_df = county_df[county_df['State_ANSI'] == 6]
+    county_df.rename(columns={"Geo Code": "FIPS", "State_ANSI": "state_code" }, inplace=True)
+    county_df['FIPS'] = county_df.FIPS.astype(int)
+    county_df['FIPS'] = county_df.FIPS.astype(str)
+    county_df['FIPS'] = county_df.FIPS.str.zfill(5)
+ 
+    
+    df = pd.merge(df, county_df, on=['state_code', 'FIPS']) 
+ 
+    fig = px.choropleth(df, geojson=counties, locations='FIPS', color='p',
+                          color_continuous_scale="Viridis",
+                          range_color=(df['p'].min(), df['p'].max()),
+                          scope="usa", 
+                          labels={'pred': 'p'}
+                          )
+    fig.update_layout(margin={"r": 0, "t": 0, "l": 0, "b": 0})
+      
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+    return graphJSON
+
+
+
+@app.route('/analyze_callback2', methods=['POST', 'GET'])
+def cb2(): 
+
+    lst = [
+    get_doy(request.args.get('date_select')), get_time(request.args.get('time_select')),
+    request.args.get('cause_dd'), request.args.get('CAUSE_AGE_CATEGORY'), request.args.get('general_cause'), 
+    request.args.get('burning_index'), request.args.get('min_air_temperature_K_avg'),  request.args.get('max_air_temperature_K_avg'),
+    request.args.get('max_relative_humidity_avg'), request.args.get('min_relative_humidity_avg'),  request.args.get('precipitation_amount_avg'),
+    request.args.get('specific_humidity'), request.args.get('surface_downwelling_shortwave_flux_avg'),  request.args.get('wind_speed_avg'),]
+   
+    fips_mapping = pd.read_csv('saved_model/fips_reference.csv') 
+    fips_mapping = fips_mapping.loc[:, ~fips_mapping.columns.str.contains('^Unnamed')]
+
+ 
+    model = load_model("saved_model/DNN_v5.h5")
+    scaler=StandardScaler()
+    
+    x = scaler.fit_transform(np.array(lst,  dtype=np.float).reshape((1, 14))) ## data inputs here
+    pred = model.predict(x)[0]
+
+    df = fips_mapping[['items']].rename(columns={"items": "FIPS" })
+    df['state_code'] = 6
+    df['FIPS'] = df.FIPS.astype(int)
+    df['FIPS'] = df.FIPS.astype(str)
+    df['FIPS'] = df.FIPS.str.zfill(5)
+    
+    df['p'] =pred
+
+    df = df.sort_values(by=['p'], ascending=False)
+
+    county_df = pd.read_csv("saved_model/county_codes.csv")
+    
+    county_df = county_df[county_df['State_ANSI'] == 6]
+    county_df.rename(columns={"Geo Code": "FIPS", "State_ANSI": "state_code" }, inplace=True)
+    county_df['FIPS'] = county_df.FIPS.astype(int)
+    county_df['FIPS'] = county_df.FIPS.astype(str)
+    county_df['FIPS'] = county_df.FIPS.str.zfill(5)
+ 
+    
+    df = pd.merge(df, county_df, on=['state_code', 'FIPS']) 
+ 
+ 
+    fig = px.bar(df, y='p', x='County Name', text='p')
+    fig.update_traces(texttemplate='%{text:.2s}', textposition='outside')
+    fig.update_layout(uniformtext_minsize=8, uniformtext_mode='hide')
+
+    graphJSON = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+    return graphJSON
+
+
+ 
+def get_doy(d):
+    d = d.split("/")
+    year = int(d[2])
+    month = int(d[0])
+    day = int(d[1]) 
+    date_val = date(year, month, day)
+ 
+    day_of_year = date_val.strftime('%j')
+    return int(day_of_year)
+
+def get_time(t):
+    in_time = datetime.strptime(t, "%I:%M %p")
+    out_time = datetime.strftime(in_time, "%H:%M")
+    return float(out_time.replace(":",""))
 
 if __name__ == "__main__":
     app.run(debug=True)
